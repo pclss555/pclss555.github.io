@@ -1,0 +1,224 @@
+<!DOCTYPE html><html lang="zh-CN" data-theme="light"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0,viewport-fit=cover"><title>抖音SSL pining绕过 | 单位法向量</title><meta name="author" content="单位法向量"><meta name="copyright" content="单位法向量"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#ffffff"><meta name="description" content="抖音 SSL Unpinning 实战：3 个 Hook 点的完整拆解 目标：让 Reqable（MITM 代理）能解密抖音 39.9.0 的 HTTPS 流量。平台：Android 16 arm64，Frida + 抖音 com.ss.android.ugc.aweme。结论先行：证书校验全部藏在 native 层的两个 BoringSSL 库。  一、背景：为什么常规方案全部失效抖音的网络栈不">
+<meta property="og:type" content="article">
+<meta property="og:title" content="抖音SSL pining绕过">
+<meta property="og:url" content="https://pclss555.github.io/2026/10/05/%E6%8A%96%E9%9F%B3_ssl_pining/index.html">
+<meta property="og:site_name" content="单位法向量">
+<meta property="og:description" content="抖音 SSL Unpinning 实战：3 个 Hook 点的完整拆解 目标：让 Reqable（MITM 代理）能解密抖音 39.9.0 的 HTTPS 流量。平台：Android 16 arm64，Frida + 抖音 com.ss.android.ugc.aweme。结论先行：证书校验全部藏在 native 层的两个 BoringSSL 库。  一、背景：为什么常规方案全部失效抖音的网络栈不">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://pclss555.github.io/img/%E5%92%8C%E6%A0%97%E8%96%B0%E5%AD%902.png">
+<meta property="article:published_time" content="2026-10-05T10:37:00.000Z">
+<meta property="article:modified_time" content="2026-10-05T10:36:55.134Z">
+<meta property="article:author" content="单位法向量">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://pclss555.github.io/img/%E5%92%8C%E6%A0%97%E8%96%B0%E5%AD%902.png"><script type="application/ld+json">{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "抖音SSL pining绕过",
+  "url": "https://pclss555.github.io/2026/10/05/%E6%8A%96%E9%9F%B3_ssl_pining/",
+  "image": "https://pclss555.github.io/img/%E5%92%8C%E6%A0%97%E8%96%B0%E5%AD%902.png",
+  "datePublished": "2026-10-05T10:37:00.000Z",
+  "dateModified": "2026-10-05T10:36:55.134Z",
+  "author": [
+    {
+      "@type": "Person",
+      "name": "单位法向量",
+      "url": "https://pclss555.github.io"
+    }
+  ]
+}</script><link rel="shortcut icon" href="/img/favicon.png"><link rel="canonical" href="https://pclss555.github.io/2026/10/05/%E6%8A%96%E9%9F%B3_ssl_pining/index.html"><link rel="preconnect" href="//cdn.jsdelivr.net"/><link rel="preconnect" href="//busuanzi.ibruce.info"/><link rel="stylesheet" href="/css/index.css?v=5.5.4"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@7.1.0/css/all.min.css"><script>
+    (() => {
+      
+    const saveToLocal = {
+      set: (key, value, ttl) => {
+        if (!ttl) return
+        const expiry = Date.now() + ttl * 86400000
+        localStorage.setItem(key, JSON.stringify({ value, expiry }))
+      },
+      get: key => {
+        const itemStr = localStorage.getItem(key)
+        if (!itemStr) return undefined
+        const { value, expiry } = JSON.parse(itemStr)
+        if (Date.now() > expiry) {
+          localStorage.removeItem(key)
+          return undefined
+        }
+        return value
+      }
+    }
+
+    window.btf = {
+      saveToLocal,
+      getScript: (url, attr = {}) => new Promise((resolve, reject) => {
+        const script = document.createElement('script')
+        script.src = url
+        script.async = true
+        Object.entries(attr).forEach(([key, val]) => script.setAttribute(key, val))
+        script.onload = script.onreadystatechange = () => {
+          if (!script.readyState || /loaded|complete/.test(script.readyState)) resolve()
+        }
+        script.onerror = reject
+        document.head.appendChild(script)
+      }),
+      getCSS: (url, id) => new Promise((resolve, reject) => {
+        const link = document.createElement('link')
+        link.rel = 'stylesheet'
+        link.href = url
+        if (id) link.id = id
+        link.onload = link.onreadystatechange = () => {
+          if (!link.readyState || /loaded|complete/.test(link.readyState)) resolve()
+        }
+        link.onerror = reject
+        document.head.appendChild(link)
+      }),
+      addGlobalFn: (key, fn, name = false, parent = window) => {
+        if (!false && key.startsWith('pjax')) return
+        const globalFn = parent.globalFn || {}
+        globalFn[key] = globalFn[key] || {}
+        globalFn[key][name || Object.keys(globalFn[key]).length] = fn
+        parent.globalFn = globalFn
+      }
+    }
+  
+      
+      const activateDarkMode = () => {
+        document.documentElement.setAttribute('data-theme', 'dark')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#0d0d0d')
+        }
+      }
+      const activateLightMode = () => {
+        document.documentElement.setAttribute('data-theme', 'light')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#ffffff')
+        }
+      }
+
+      btf.activateDarkMode = activateDarkMode
+      btf.activateLightMode = activateLightMode
+
+      const theme = saveToLocal.get('theme')
+    
+          theme === 'dark' ? activateDarkMode() : theme === 'light' ? activateLightMode() : null
+        
+      
+      const asideStatus = saveToLocal.get('aside-status')
+      if (asideStatus !== undefined) {
+        document.documentElement.classList.toggle('hide-aside', asideStatus === 'hide')
+      }
+    
+      
+    const detectApple = () => {
+      if (/iPad|iPhone|iPod|Macintosh/.test(navigator.userAgent)) {
+        document.documentElement.classList.add('apple')
+      }
+    }
+    detectApple()
+  
+    })()
+  </script><script>const GLOBAL_CONFIG = {
+  root: '/',
+  algolia: undefined,
+  localSearch: undefined,
+  translate: undefined,
+  highlight: {"plugin":"highlight.js","highlightCopy":true,"highlightLang":true,"highlightHeightLimit":false,"highlightFullpage":false,"highlightMacStyle":true},
+  copy: {
+    success: '复制成功',
+    error: '复制失败',
+    noSupport: '浏览器不支持'
+  },
+  relativeDate: {
+    homepage: false,
+    post: false
+  },
+  runtime: '',
+  dateSuffix: {
+    just: '刚刚',
+    min: '分钟前',
+    hour: '小时前',
+    day: '天前',
+    month: '个月前'
+  },
+  copyright: undefined,
+  lightbox: 'true',
+  Snackbar: undefined,
+  infinitegrid: {
+    js: 'https://cdn.jsdelivr.net/npm/@egjs/infinitegrid@4.13.0/dist/infinitegrid.min.js',
+    buttonText: '加载更多'
+  },
+  isPhotoFigcaption: false,
+  islazyloadPlugin: false,
+  isAnchor: false,
+  percent: {
+    toc: true,
+    rightside: false,
+  },
+  autoDarkmode: false
+}</script><script id="config-diff">var GLOBAL_CONFIG_SITE = {
+  title: '抖音SSL pining绕过',
+  isHighlightShrink: false,
+  isToc: true,
+  pageType: 'post'
+}</script><meta name="generator" content="Hexo 8.1.1"></head><body><div class="bg-animation" id="web_bg" style="background-image: url(https://i.loli.net/2019/09/09/5oDRkWVKctx2b6A.png);"></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="avatar-img text-center"><img src="/img/qz1.jpg" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar"/></div><div class="site-data text-center"><a href="/archives/"><div class="headline">文章</div><div class="length-num">8</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">0</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">2</div></a></div><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 主页</span></a></div><div class="menus_item"><a class="site-page" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类</span></a></div><div class="menus_item"><a class="site-page" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签</span></a></div><div class="menus_item"><a class="site-page" href="/music/"><i class="fa-fw fas fa-music"></i><span> 音乐</span></a></div><div class="menus_item"><a class="site-page" href="/movies/"><i class="fa-fw fas fa-video"></i><span> 视频</span></a></div><div class="menus_item"><a class="site-page" href="/about/"><i class="fa-fw fas fa-info-circle"></i><span> 关于</span></a></div></div></div></div><div class="post type-安卓逆向" id="body-wrap"><header class="post-bg" id="page-header" style="background-image: url(/img/%E5%92%8C%E6%A0%97%E8%96%B0%E5%AD%902.png);"><nav id="nav"><span id="blog-info"><a class="nav-site-title" href="/"><img class="site-icon" src="/img/qz1.jpg" alt="Logo"><span class="site-name">单位法向量</span></a><a class="nav-page-title" href="/"><span class="site-name">抖音SSL pining绕过</span><span class="site-name"><i class="fa-solid fa-circle-arrow-left"></i><span>  返回首页</span></span></a></span><div id="menus"><div class="menus_items"><div class="menus_item"><a class="site-page" href="/"><i class="fa-fw fas fa-home"></i><span> 主页</span></a></div><div class="menus_item"><a class="site-page" href="/categories/"><i class="fa-fw fas fa-folder-open"></i><span> 分类</span></a></div><div class="menus_item"><a class="site-page" href="/tags/"><i class="fa-fw fas fa-tags"></i><span> 标签</span></a></div><div class="menus_item"><a class="site-page" href="/music/"><i class="fa-fw fas fa-music"></i><span> 音乐</span></a></div><div class="menus_item"><a class="site-page" href="/movies/"><i class="fa-fw fas fa-video"></i><span> 视频</span></a></div><div class="menus_item"><a class="site-page" href="/about/"><i class="fa-fw fas fa-info-circle"></i><span> 关于</span></a></div></div><div id="toggle-menu"><span class="site-page"><i class="fas fa-bars fa-fw"></i></span></div></div></nav><div id="post-info"><h1 class="post-title">抖音SSL pining绕过</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="far fa-calendar-alt fa-fw post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" datetime="2026-10-05T10:37:00.000Z" title="发表于 2026-10-05 18:37:00">2026-10-05</time><span class="post-meta-separator">|</span><i class="fas fa-history fa-fw post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" datetime="2026-10-05T10:36:55.134Z" title="更新于 2026-10-05 18:36:55">2026-10-05</time></span><span class="post-meta-categories"><span class="post-meta-separator">|</span><i class="fas fa-inbox fa-fw post-meta-icon"></i><a class="post-meta-categories" href="/categories/%E5%AE%89%E5%8D%93%E9%80%86%E5%90%91/">安卓逆向</a></span></div><div class="meta-secondline"><span class="post-meta-separator">|</span><span class="post-meta-pv-cv" id="" data-flag-title=""><i class="far fa-eye fa-fw post-meta-icon"></i><span class="post-meta-label">浏览量:</span><span id="busuanzi_value_page_pv"><i class="fa-solid fa-spinner fa-spin"></i></span></span></div></div></div></header><main class="layout" id="content-inner"><div id="post"><article class="container post-content" id="article-container"><h1 id="抖音-SSL-Unpinning-实战：3-个-Hook-点的完整拆解"><a href="#抖音-SSL-Unpinning-实战：3-个-Hook-点的完整拆解" class="headerlink" title="抖音 SSL Unpinning 实战：3 个 Hook 点的完整拆解"></a>抖音 SSL Unpinning 实战：3 个 Hook 点的完整拆解</h1><blockquote>
+<p>目标：让 Reqable（MITM 代理）能解密抖音 39.9.0 的 HTTPS 流量。<br>平台：Android 16 arm64，Frida + 抖音 <code>com.ss.android.ugc.aweme</code>。<br>结论先行：证书校验全部藏在 native 层的两个 BoringSSL 库。</p>
+</blockquote>
+<h2 id="一、背景：为什么常规方案全部失效"><a href="#一、背景：为什么常规方案全部失效" class="headerlink" title="一、背景：为什么常规方案全部失效"></a>一、背景：为什么常规方案全部失效</h2><p>抖音的网络栈不走 OkHttp，而是 TTNet 定制的 <strong>Cronet</strong>。证书校验（SSL Pinning）全部在 native 层完成，分布在两个 so 里：</p>
+<table>
+<thead>
+<tr>
+<th>库</th>
+<th>角色</th>
+<th>关键特点</th>
+<th>Hook 思路</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>libsscronet.so</code></td>
+<td>主 API 流量</td>
+<td>静态编译 BoringSSL，<strong>零 <code>SSL_*</code> 导出</strong>，无法按符号 hook</td>
+<td>IDA 定位偏移，attach 固定偏移</td>
+</tr>
+<tr>
+<td><code>libttboringssl.so</code></td>
+<td>TTNet 通用网络库</td>
+<td><code>SSL_*</code> 函数直接导出</td>
+<td>按导出符号 hook</td>
+</tr>
+</tbody></table>
+<p>两个库用的是 BoringSSL 的 <strong>custom_verify</strong> 机制：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 注册回调：TLS 握手时 BoringSSL 会调用 cb(ssl, out_alert)</span></span><br><span class="line">SSL_CTX_set_custom_verify(ctx, mode, cb);</span><br><span class="line"><span class="comment">// cb 返回 0 即 ssl_verify_ok，非 0 即校验失败</span></span><br></pre></td></tr></table></figure>
+
+<h2 id="二、核心思路"><a href="#二、核心思路" class="headerlink" title="二、核心思路"></a>二、核心思路</h2><p><strong>找到每个 custom_verify 回调入口 → <code>Interceptor.attach</code> → <code>onLeave</code> 里 <code>retval.replace(0)</code>。</strong></p>
+<h2 id="三、3-个-Hook-点详解"><a href="#三、3-个-Hook-点详解" class="headerlink" title="三、3 个 Hook 点详解"></a>三、3 个 Hook 点详解</h2><h3 id="Hook-点-1：libsscronet-so-0x2BEB90（TCP-链路验证回调）"><a href="#Hook-点-1：libsscronet-so-0x2BEB90（TCP-链路验证回调）" class="headerlink" title="Hook 点 1：libsscronet.so + 0x2BEB90（TCP 链路验证回调）"></a>Hook 点 1：<code>libsscronet.so + 0x2BEB90</code>（TCP 链路验证回调）</h3><ul>
+<li><strong>是什么</strong>：cronet 内部 TCP TLS 链路的 custom_verify 回调入口（39.9.0 arm64 偏移）。</li>
+<li><strong>怎么找</strong>：so 无任何 SSL 导出，只能 IDA 打开 → 定位静态符号 <code>SSL_CTX_set_custom_verify</code> → 查交叉引用，<strong>调用处第三参数（回调指针）就是回调地址</strong>。</li>
+<li><strong>怎么 hook</strong>：</li>
+</ul>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">var</span> mod = <span class="title class_">Process</span>.<span class="title function_">getModuleByName</span>(<span class="string">&quot;libsscronet.so&quot;</span>);</span><br><span class="line"><span class="title class_">Interceptor</span>.<span class="title function_">attach</span>(mod.<span class="property">base</span>.<span class="title function_">add</span>(<span class="number">0x2BEB90</span>), &#123;</span><br><span class="line">    <span class="attr">onLeave</span>: <span class="keyword">function</span> (<span class="params">retval</span>) &#123;</span><br><span class="line">        <span class="keyword">if</span> (retval.<span class="title function_">toInt32</span>() !== <span class="number">0</span>) retval.<span class="title function_">replace</span>(<span class="number">0</span>);   <span class="comment">// -&gt; ssl_verify_ok</span></span><br><span class="line">    &#125;</span><br><span class="line">&#125;);</span><br></pre></td></tr></table></figure>
+
+<ul>
+<li><strong>效果</strong>：主 API 流量（h2 over TCP）的证书校验被放行，这是抓包成功的核心点。</li>
+</ul>
+<h3 id="Hook-点-2-3：libttboringssl-so-的-SSL-CTX-set-custom-verify-SSL-set-custom-verify"><a href="#Hook-点-2-3：libttboringssl-so-的-SSL-CTX-set-custom-verify-SSL-set-custom-verify" class="headerlink" title="Hook 点 2 &amp; 3：libttboringssl.so 的 SSL_CTX_set_custom_verify &#x2F; SSL_set_custom_verify"></a>Hook 点 2 &amp; 3：<code>libttboringssl.so</code> 的 <code>SSL_CTX_set_custom_verify</code> &#x2F; <code>SSL_set_custom_verify</code></h3><ul>
+<li><strong>是什么</strong>：TTNet 通用库的回调注册函数（有导出符号）。回调地址不是固定的，而是在<strong>注册的瞬间</strong>作为第三参数传进来。</li>
+<li><strong>怎么 hook</strong>：attach setter 本身，<code>onEnter</code> 时截获第三参数拿到回调地址，再对回调做同样的 retval 覆盖：</li>
+</ul>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line">[<span class="string">&quot;SSL_CTX_set_custom_verify&quot;</span>, <span class="string">&quot;SSL_set_custom_verify&quot;</span>].<span class="title function_">forEach</span>(<span class="keyword">function</span> (<span class="params">name</span>) &#123;</span><br><span class="line">    <span class="keyword">var</span> addr = <span class="title class_">Module</span>.<span class="title function_">findExportByName</span>(<span class="string">&quot;libttboringssl.so&quot;</span>, name);</span><br><span class="line">    <span class="title class_">Interceptor</span>.<span class="title function_">attach</span>(addr, &#123;</span><br><span class="line">        <span class="attr">onEnter</span>: <span class="keyword">function</span> (<span class="params">args</span>) &#123;</span><br><span class="line">            <span class="keyword">var</span> cb = args[<span class="number">2</span>];                    <span class="comment">// 回调指针</span></span><br><span class="line">            <span class="keyword">if</span> (cb.<span class="title function_">isNull</span>()) <span class="keyword">return</span>;</span><br><span class="line">            <span class="keyword">try</span> &#123;</span><br><span class="line">                <span class="title class_">Interceptor</span>.<span class="title function_">attach</span>(cb, &#123; <span class="attr">onLeave</span>: <span class="keyword">function</span> (<span class="params">r</span>) &#123;</span><br><span class="line">                    <span class="keyword">if</span> (r.<span class="title function_">toInt32</span>() !== <span class="number">0</span>) r.<span class="title function_">replace</span>(<span class="number">0</span>);</span><br><span class="line">                &#125;&#125;);</span><br><span class="line">            &#125; <span class="keyword">catch</span> (e) &#123;</span><br><span class="line">                <span class="comment">// 回调函数太小 attach 不上时的 fallback：包一层代理</span></span><br><span class="line">                <span class="comment">// 跑原回调 + 吞掉返回值</span></span><br><span class="line">                args[<span class="number">2</span>] = <span class="keyword">new</span> <span class="title class_">NativeCallback</span>(<span class="keyword">function</span> (<span class="params">ssl, out_alert</span>) &#123;</span><br><span class="line">                    <span class="keyword">try</span> &#123; <span class="title function_">orig</span>(ssl, out_alert); &#125; <span class="keyword">catch</span> (e) &#123;&#125;</span><br><span class="line">                    <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">                &#125;, <span class="string">&quot;int&quot;</span>, [<span class="string">&quot;pointer&quot;</span>, <span class="string">&quot;pointer&quot;</span>]);</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;);</span><br><span class="line">&#125;);</span><br></pre></td></tr></table></figure>
+
+<ul>
+<li><strong>效果</strong>：不管 app 用哪个 API 注册校验，注册瞬间回调就被 pin 住，版本更新一般不需要改脚本。</li>
+<li><strong>细节</strong>：如果回调函数太小导致 attach 失败，用 fallback——构造一个新回调替换 <code>args[2]</code>，新回调<strong>先调用原回调（保留副作用）再返回 0</strong>。注意 <code>NativeCallback</code> 要放进全局池防 GC。</li>
+</ul>
+<h2 id="四、两个工程细节（不做会翻车）"><a href="#四、两个工程细节（不做会翻车）" class="headerlink" title="四、两个工程细节（不做会翻车）"></a>四、两个工程细节（不做会翻车）</h2><h3 id="1-spawn-模式必须等-so-加载"><a href="#1-spawn-模式必须等-so-加载" class="headerlink" title="1. spawn 模式必须等 so 加载"></a>1. spawn 模式必须等 so 加载</h3><p>冷启动时两个 so 还没加载，直接 hook 会失败。做法是 hook <code>dlopen</code> 系函数，在 <code>onLeave</code> 里检测目标 so 加载完成后立即安装：</p>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">[<span class="string">&quot;android_dlopen_ext&quot;</span>, <span class="string">&quot;dlopen&quot;</span>, <span class="string">&quot;__loader_dlopen&quot;</span>].<span class="title function_">forEach</span>(<span class="keyword">function</span> (<span class="params">fn</span>) &#123;</span><br><span class="line">    <span class="keyword">var</span> a = <span class="title class_">Module</span>.<span class="title function_">getGlobalExportByName</span>(fn);</span><br><span class="line">    <span class="title class_">Interceptor</span>.<span class="title function_">attach</span>(a, &#123;</span><br><span class="line">        <span class="attr">onEnter</span>: <span class="keyword">function</span> (<span class="params">args</span>) &#123; <span class="variable language_">this</span>.<span class="property">path</span> = args[<span class="number">0</span>].<span class="title function_">readCString</span>() || <span class="string">&quot;&quot;</span>; &#125;,</span><br><span class="line">        <span class="attr">onLeave</span>: <span class="keyword">function</span> (<span class="params"></span>) &#123;</span><br><span class="line">            <span class="keyword">if</span> (<span class="variable language_">this</span>.<span class="property">path</span>.<span class="title function_">indexOf</span>(<span class="string">&quot;libsscronet.so&quot;</span>) !== -<span class="number">1</span>) <span class="title function_">install</span>();</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;);</span><br><span class="line">&#125;);</span><br></pre></td></tr></table></figure>
+
+<h3 id="2-Android-16-上抖音自身的-ShortcutManager-崩溃"><a href="#2-Android-16-上抖音自身的-ShortcutManager-崩溃" class="headerlink" title="2. Android 16 上抖音自身的 ShortcutManager 崩溃"></a>2. Android 16 上抖音自身的 ShortcutManager 崩溃</h3><p>崩溃栈 <code>ShortcutManager → Bitmap.writeToParcel → AParcel_writeInt32</code>，是抖音在 Android 16 上的 shortcut 图标竞态 bug，与 hook 无关，但会让 app 闪退。用 Java 层 hook 吞掉：</p>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="title class_">Java</span>.<span class="title function_">perform</span>(<span class="keyword">function</span> (<span class="params"></span>) &#123;</span><br><span class="line">    <span class="keyword">var</span> sm = <span class="title class_">Java</span>.<span class="title function_">use</span>(<span class="string">&quot;android.content.pm.ShortcutManager&quot;</span>);</span><br><span class="line">    [<span class="string">&quot;setDynamicShortcuts&quot;</span>, <span class="string">&quot;addDynamicShortcuts&quot;</span>].<span class="title function_">forEach</span>(<span class="keyword">function</span> (<span class="params">m</span>) &#123;</span><br><span class="line">        sm[m].<span class="property">implementation</span> = <span class="keyword">function</span> (<span class="params"></span>) &#123; <span class="keyword">return</span> m === <span class="string">&quot;setDynamicShortcuts&quot;</span>; &#125;; <span class="comment">// 假装成功</span></span><br><span class="line">    &#125;);</span><br><span class="line">&#125;);</span><br></pre></td></tr></table></figure>
+
+<h2 id="五、完整用法"><a href="#五、完整用法" class="headerlink" title="五、完整用法"></a>五、完整用法</h2><figure class="highlight powershell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># spawn 模式最稳（让抖音冷启动）</span></span><br><span class="line">frida <span class="literal">-U</span> <span class="operator">-f</span> com.ss.android.ugc.aweme <span class="literal">-l</span> douyin_unpin.js</span><br></pre></td></tr></table></figure>
+
+<p>前置条件：Reqable CA 证书装入手机用户证书、WiFi 代理指向 Reqable。</p>
+<p>预期日志：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">[+] pinned cronet TCP  verify cb @ 0x...2beb90</span><br><span class="line">[+] pinned cronet QUIC verify cb @ 0x...418480</span><br><span class="line">[+] watching SSL_CTX_set_custom_verify</span><br><span class="line">[+] pinned ttboringssl SSL_CTX_set_custom_verify cb @ 0x...</span><br><span class="line">[+] ... retval -&gt; 0 (bypassed)        &lt;- 每次绕过验证时出现</span><br></pre></td></tr></table></figure>
+
+<p>Reqable 中出现明文 h2 请求（HTTP&#x2F;2 + 200）即为成功。实测一次冷启动抓到 60+ 条抖音请求，含 <code>amemv.com</code> 配置接口的完整明文（登录态 cookie、x-tt-token、JSON 响应体全部可读）。</p>
+</article><div class="post-copyright"><div class="post-copyright__author"><span class="post-copyright-meta"><i class="fas fa-circle-user fa-fw"></i>文章作者: </span><span class="post-copyright-info"><a href="https://pclss555.github.io">单位法向量</a></span></div><div class="post-copyright__type"><span class="post-copyright-meta"><i class="fas fa-square-arrow-up-right fa-fw"></i>文章链接: </span><span class="post-copyright-info"><a href="https://pclss555.github.io/2026/10/05/%E6%8A%96%E9%9F%B3_ssl_pining/">https://pclss555.github.io/2026/10/05/%E6%8A%96%E9%9F%B3_ssl_pining/</a></span></div><div class="post-copyright__notice"><span class="post-copyright-meta"><i class="fas fa-circle-exclamation fa-fw"></i>版权声明: </span><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来源 <a href="https://pclss555.github.io" target="_blank">单位法向量</a>！</span></div></div><div class="tag_share"><div class="post-share"><div class="social-share" data-image="/img/%E5%92%8C%E6%A0%97%E8%96%B0%E5%AD%902.png" data-sites="facebook,x,wechat,weibo,qq"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/butterfly-extsrc@1.1.6/sharejs/dist/css/share.min.css" media="print" onload="this.media='all'"><script src="https://cdn.jsdelivr.net/npm/butterfly-extsrc@1.1.6/sharejs/dist/js/social-share.min.js" defer></script></div></div><nav class="pagination-post" id="pagination"><a class="pagination-related full-width" href="/2026/08/09/x%E5%BF%83%E7%A0%B4%E8%A7%A3%E7%89%88/" title="网络逆向之TS"><img class="cover" src="/img/%E5%92%8C%E6%A0%97%E8%96%B0%E5%AD%901.png" onerror="onerror=null;src='/img/404.jpg'" alt="cover of next post"><div class="info text-right"><div class="info-1"><div class="info-item-1">下一篇</div><div class="info-item-2">网络逆向之TS</div></div><div class="info-2"><div class="info-item-1">【网络逆向】TS —&gt; 视频HLS加密 前情提要：首先费劲九牛二虎之力，找到了x心破解版，不过跟大佬的不是一个版本，包名不一样。 打开之后发现，该破解版仍存在vip标签的视频 并且只能看几秒预告片。不是哥们，这真是破解版吗？ 抓包先抓包这几秒的试看视频，看看怎么个事！ 工具：  reqable小黄鸟 非root，shizuku环境 Xposed模块JustTrustMe++：使用lspatch对x心破解版的ssl逻辑进行Hook ，使其能够信任我们的小黄鸟证书。（大概是这么个原理）  开启小黄鸟后，点击播放试看视频，开始抓包： 过滤m3u8	m3u8是一种基于文本的播放列表文件格式，目前是HTTP Live Streaming（HLS）协议的核心组成部分。m3u8文件本身不包含实际的音视频数据，而是通过指令告知播放器媒体片段的地址与播放顺序。   get请求头三个参数的含义：  t：时间戳 us：用户唯一标识 sign：签名 &#x3D; 哈希(秘钥 + 资源路径 + t + us)  看一下响应： 响应内容含义    标签 含义    #EXTM3U 文件头，标识这是 M...</div></div></div></a></nav></div><div class="aside-content" id="aside-content"><div class="card-widget card-info text-center"><div class="avatar-img"><img src="/img/qz1.jpg" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar"/></div><div class="author-info-name">单位法向量</div><div class="author-info-description">无描述</div><div class="site-data"><a href="/archives/"><div class="headline">文章</div><div class="length-num">8</div></a><a href="/tags/"><div class="headline">标签</div><div class="length-num">0</div></a><a href="/categories/"><div class="headline">分类</div><div class="length-num">2</div></a></div><a id="card-info-btn" target="_blank" rel="noopener" href="https://github.com/pclss555/pclss555.github.io"><i class="fab fa-github"></i><span>Follow Me</span></a><div class="card-info-social-icons"><a class="social-icon" href="https://github.com/pclss555/pclss555.github.io" target="_blank" title="Github"><i class="fab fa-github" style="color: #24292e;"></i></a><a class="social-icon" href="/pclss555@163.com" target="_blank" title="Email"><i class="fas fa-envelope" style="color: #4a7dbe;"></i></a></div></div><div class="card-widget card-announcement"><div class="item-headline"><i class="fas fa-bullhorn fa-shake"></i><span>公告</span></div><div class="announcement_content">This is my Blog</div></div><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="fas fa-stream"></i><span>目录</span><span class="toc-percentage"></span></div><div class="toc-content"><ol class="toc"><li class="toc-item toc-level-1"><a class="toc-link" href="#%E6%8A%96%E9%9F%B3-SSL-Unpinning-%E5%AE%9E%E6%88%98%EF%BC%9A3-%E4%B8%AA-Hook-%E7%82%B9%E7%9A%84%E5%AE%8C%E6%95%B4%E6%8B%86%E8%A7%A3"><span class="toc-number">1.</span> <span class="toc-text">抖音 SSL Unpinning 实战：3 个 Hook 点的完整拆解</span></a><ol class="toc-child"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%B8%80%E3%80%81%E8%83%8C%E6%99%AF%EF%BC%9A%E4%B8%BA%E4%BB%80%E4%B9%88%E5%B8%B8%E8%A7%84%E6%96%B9%E6%A1%88%E5%85%A8%E9%83%A8%E5%A4%B1%E6%95%88"><span class="toc-number">1.1.</span> <span class="toc-text">一、背景：为什么常规方案全部失效</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%BA%8C%E3%80%81%E6%A0%B8%E5%BF%83%E6%80%9D%E8%B7%AF"><span class="toc-number">1.2.</span> <span class="toc-text">二、核心思路</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%B8%89%E3%80%813-%E4%B8%AA-Hook-%E7%82%B9%E8%AF%A6%E8%A7%A3"><span class="toc-number">1.3.</span> <span class="toc-text">三、3 个 Hook 点详解</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#Hook-%E7%82%B9-1%EF%BC%9Alibsscronet-so-0x2BEB90%EF%BC%88TCP-%E9%93%BE%E8%B7%AF%E9%AA%8C%E8%AF%81%E5%9B%9E%E8%B0%83%EF%BC%89"><span class="toc-number">1.3.1.</span> <span class="toc-text">Hook 点 1：libsscronet.so + 0x2BEB90（TCP 链路验证回调）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#Hook-%E7%82%B9-2-3%EF%BC%9Alibttboringssl-so-%E7%9A%84-SSL-CTX-set-custom-verify-SSL-set-custom-verify"><span class="toc-number">1.3.2.</span> <span class="toc-text">Hook 点 2 &amp; 3：libttboringssl.so 的 SSL_CTX_set_custom_verify &#x2F; SSL_set_custom_verify</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%9B%9B%E3%80%81%E4%B8%A4%E4%B8%AA%E5%B7%A5%E7%A8%8B%E7%BB%86%E8%8A%82%EF%BC%88%E4%B8%8D%E5%81%9A%E4%BC%9A%E7%BF%BB%E8%BD%A6%EF%BC%89"><span class="toc-number">1.4.</span> <span class="toc-text">四、两个工程细节（不做会翻车）</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#1-spawn-%E6%A8%A1%E5%BC%8F%E5%BF%85%E9%A1%BB%E7%AD%89-so-%E5%8A%A0%E8%BD%BD"><span class="toc-number">1.4.1.</span> <span class="toc-text">1. spawn 模式必须等 so 加载</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-Android-16-%E4%B8%8A%E6%8A%96%E9%9F%B3%E8%87%AA%E8%BA%AB%E7%9A%84-ShortcutManager-%E5%B4%A9%E6%BA%83"><span class="toc-number">1.4.2.</span> <span class="toc-text">2. Android 16 上抖音自身的 ShortcutManager 崩溃</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%BA%94%E3%80%81%E5%AE%8C%E6%95%B4%E7%94%A8%E6%B3%95"><span class="toc-number">1.5.</span> <span class="toc-text">五、完整用法</span></a></li></ol></li></ol></div></div><div class="card-widget card-recent-post"><div class="item-headline"><i class="fas fa-history"></i><span>最新文章</span></div><div class="aside-list"><div class="aside-list-item"><a class="thumbnail" href="/2026/10/05/%E6%8A%96%E9%9F%B3_ssl_pining/" title="抖音SSL pining绕过"><img src="/img/%E5%92%8C%E6%A0%97%E8%96%B0%E5%AD%902.png" onerror="this.onerror=null;this.src='/img/404.jpg'" alt="抖音SSL pining绕过"/></a><div class="content"><a class="title" href="/2026/10/05/%E6%8A%96%E9%9F%B3_ssl_pining/" title="抖音SSL pining绕过">抖音SSL pining绕过</a><time datetime="2026-10-05T10:37:00.000Z" title="发表于 2026-10-05 18:37:00">2026-10-05</time></div></div><div class="aside-list-item"><a class="thumbnail" href="/2026/08/09/x%E5%BF%83%E7%A0%B4%E8%A7%A3%E7%89%88/" title="网络逆向之TS"><img src="/img/%E5%92%8C%E6%A0%97%E8%96%B0%E5%AD%901.png" onerror="this.onerror=null;this.src='/img/404.jpg'" alt="网络逆向之TS"/></a><div class="content"><a class="title" href="/2026/08/09/x%E5%BF%83%E7%A0%B4%E8%A7%A3%E7%89%88/" title="网络逆向之TS">网络逆向之TS</a><time datetime="2026-08-09T07:11:00.000Z" title="发表于 2026-08-09 15:11:00">2026-08-09</time></div></div><div class="aside-list-item"><a class="thumbnail" href="/2026/06/17/fridalabs/" title="fridalabs通关"><img src="/img/qz3.png" onerror="this.onerror=null;this.src='/img/404.jpg'" alt="fridalabs通关"/></a><div class="content"><a class="title" href="/2026/06/17/fridalabs/" title="fridalabs通关">fridalabs通关</a><time datetime="2026-06-17T15:07:00.000Z" title="发表于 2026-06-17 23:07:00">2026-06-17</time></div></div><div class="aside-list-item"><a class="thumbnail" href="/2026/06/17/%E5%AE%89%E5%8D%93%E4%BB%BFpixel%E5%8E%9F%E7%94%9F%E4%B8%BB%E9%A2%98/" title="安卓仿pixel原生主题"><img src="/img/skk1.png" onerror="this.onerror=null;this.src='/img/404.jpg'" alt="安卓仿pixel原生主题"/></a><div class="content"><a class="title" href="/2026/06/17/%E5%AE%89%E5%8D%93%E4%BB%BFpixel%E5%8E%9F%E7%94%9F%E4%B8%BB%E9%A2%98/" title="安卓仿pixel原生主题">安卓仿pixel原生主题</a><time datetime="2026-06-17T15:07:00.000Z" title="发表于 2026-06-17 23:07:00">2026-06-17</time></div></div><div class="aside-list-item"><a class="thumbnail" href="/2026/05/23/Xposed%E6%A8%A1%E5%9D%97%E5%88%B6%E4%BD%9C%E3%80%81%E9%A1%B9%E7%9B%AE%E6%A8%A1%E7%89%88/" title="Xposed模块制作 &amp;&amp; 项目模版"><img src="/img/qz2.jpg" onerror="this.onerror=null;this.src='/img/404.jpg'" alt="Xposed模块制作 &amp;&amp; 项目模版"/></a><div class="content"><a class="title" href="/2026/05/23/Xposed%E6%A8%A1%E5%9D%97%E5%88%B6%E4%BD%9C%E3%80%81%E9%A1%B9%E7%9B%AE%E6%A8%A1%E7%89%88/" title="Xposed模块制作 &amp;&amp; 项目模版">Xposed模块制作 &amp;&amp; 项目模版</a><time datetime="2026-05-23T07:30:00.000Z" title="发表于 2026-05-23 15:30:00">2026-05-23</time></div></div></div></div></div></div></main><footer id="footer" style="background-image: url(/img/%E5%92%8C%E6%A0%97%E8%96%B0%E5%AD%902.png);"><div class="footer-other"><div class="footer-copyright"><span class="copyright">&copy;&nbsp;2025 - 2026 By 单位法向量</span></div><div class="footer_custom_text">Hi, welcome to my <a href="https://pclss555.github.io/">blog</a>!</div></div></footer></div><div id="rightside"><div id="rightside-config-hide"><button id="readmode" type="button" title="阅读模式"><i class="fas fa-book-open"></i></button><button id="darkmode" type="button" title="日间和夜间模式切换"><i class="fas fa-adjust"></i></button><button id="hide-aside-btn" type="button" title="单栏和双栏切换"><i class="fas fa-arrows-alt-h"></i></button></div><div id="rightside-config-show"><button id="rightside-config" type="button" title="设置"><i class="fas fa-cog fa-spin"></i></button><button class="close" id="mobile-toc-button" type="button" title="目录"><i class="fas fa-list-ul"></i></button><button id="go-up" type="button" title="回到顶部"><span class="scroll-percent"></span><i class="fas fa-arrow-up"></i></button></div></div><div><script src="/js/utils.js?v=5.5.4"></script><script src="/js/main.js?v=5.5.4"></script><script src="/"></script><div class="js-pjax"></div><script id="click-heart" src="https://cdn.jsdelivr.net/npm/butterfly-extsrc@1.1.6/dist/click-heart.min.js" async="async" mobile="false"></script><script async data-pjax src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script></div></body></html>
